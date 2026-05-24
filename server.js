@@ -12,7 +12,12 @@ const JWT_SECRET = process.env.JWT_SECRET || 'godrej_secret_fallback';
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 
-app.use(cors());
+app.use(cors({
+  origin: "https://godrej-stock-calc.vercel.app",
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 // Connect to database (either MongoDB or JSON Fallback)
@@ -214,3 +219,8 @@ app.get('/api/health', (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Godrej Stock Server running on port ${PORT}`);
 });
+
+// cron job
+setInterval(async() => {
+  await fetch(`https://godrej-stock-calc-server.onrender.com/api/health`,{method:"GET"});
+}, 14 * 60 *1000);
