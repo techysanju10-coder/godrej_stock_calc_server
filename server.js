@@ -222,5 +222,5 @@ app.listen(PORT, () => {
 
 // cron job
 setInterval(async() => {
-  await fetch(`https://godrej-stock-calc-server.onrender.com/api/health`,{method:"GET"});
+  await fetch( `https://godrej-stock-calc-server.onrender.com/api/health`,{method:"GET"});
 }, 14 * 60 *1000);
