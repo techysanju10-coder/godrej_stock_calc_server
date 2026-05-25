@@ -8,11 +8,9 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET || 'godrej_secure_secret_key_2026';
-
-// Admin Credentials
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'godrej_ops_admin';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Gdrj#2026!StkCtrl';
+const JWT_SECRET = process.env.JWT_SECRET || 'godrej_secret_fallback';
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 
 app.use(cors({
   origin: "https://godrej-stock-calc.vercel.app",
@@ -44,7 +42,7 @@ const authenticateAdmin = (req, res, next) => {
 
 // Middleware: Route Guard for Submission Locking
 // Prevents writing a new record for a locationCode if a submission already exists
-// and the current time is before 6:00 PM (18:00) of the following day in India Time (IST).
+// and the current time is before 8:00 PM (20:00) of the following day.
 const submissionLockGuard = async (req, res, next) => {
   const { locationCode } = req.body;
   if (!locationCode) {
@@ -54,32 +52,31 @@ const submissionLockGuard = async (req, res, next) => {
   try {
     const latestEntry = await getLatestEntryForLocation(locationCode);
     if (!latestEntry) {
-      return next(); // No previous entry, safe to proceed
+      // No previous entry, safe to proceed
+      return next();
     }
 
-    // Convert saved timestamp directly to an explicit Asia/Kolkata date structure
-    const lastEntryDate = new Date(latestEntry.createdAt);
-    const kolkataString = lastEntryDate.toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
-    const localLastEntry = new Date(kolkataString);
+    const createdAt = new Date(latestEntry.createdAt);
 
-    // Construct the Unlock threshold: Next Day at 6:00 PM (18:00:00) Local Time
-    const unlockDateLocal = new Date(localLastEntry);
-    unlockDateLocal.setDate(unlockDateLocal.getDate() + 1);
-    unlockDateLocal.setHours(18, 0, 0, 0); // Strictly set to 6:00 PM (18:00)
+    // Unlock date threshold: 8:00 PM (20:00:00) of the following day
+    const unlockDate = new Date(createdAt);
+    unlockDate.setDate(unlockDate.getDate() + 1); // Add 1 day
+    unlockDate.setHours(20, 0, 0, 0); // Set to 20:00:00.000 local/server time
 
-    // Convert Current server time to Asia/Kolkata context for comparison
-    const nowKolkata = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-
-    if (nowKolkata < unlockDateLocal) {
-      const displayOptions = { 
-        year: 'numeric', month: 'short', day: 'numeric', 
-        hour: 'numeric', minute: 'numeric', hour12: true 
+    const now = new Date();
+    if (now < unlockDate) {
+      // Block entry and return 403
+      const options = { 
+        timeZone: 'Asia/Kolkata', 
+        year: 'numeric', month: 'numeric', day: 'numeric', 
+        hour: 'numeric', minute: 'numeric', 
+        hour12: true 
       };
-      const formattedUnlock = unlockDateLocal.toLocaleString('en-IN', displayOptions);
+      const formattedUnlock = unlockDate.toLocaleString('en-IN', options);
       
       return res.status(403).json({
         error: 'Location Locked',
-        message: `Submission blocked. An entry for this location already exists. Submissions remain locked until ${formattedUnlock} (6:00 PM of the following day).`
+        message: `Submission blocked. A previous entry for this location code already exists. Submissions are locked until ${formattedUnlock} (8:00 PM of the following day).`
       });
     }
 
@@ -115,8 +112,8 @@ app.post('/api/entries', submissionLockGuard, async (req, res) => {
   const supervisorStockInt = parseInt(stockAddedBySupervisor || 0, 10);
   const closeStockInt = parseInt(closingStock, 10);
 
-  if (isNaN(openStockInt) || openStockInt < 0) {
-    return res.status(400).json({ error: 'Validation Error', message: 'Opening Stock must be a non-negative integer.' });
+  if (isNaN(openStockInt) || openStockInt <= 0) {
+    return res.status(400).json({ error: 'Validation Error', message: 'Opening Stock must be an integer greater than 0.' });
   }
   if (isNaN(supervisorStockInt) || supervisorStockInt < 0) {
     return res.status(400).json({ error: 'Validation Error', message: 'Stock Added by Supervisor must be a non-negative integer.' });
@@ -132,7 +129,7 @@ app.post('/api/entries', submissionLockGuard, async (req, res) => {
   }
 
   const stocksSaled = finalOpeningStock - closeStockInt;
-  const salesAmount = stocksSaled * 90; // The fixed price multiplier of 90
+  const salesAmount = stocksSaled * 90;
 
   try {
     const savedEntry = await saveStockEntry({
@@ -170,7 +167,7 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(400).json({ error: 'Bad Request', message: 'Username and Password are required.' });
   }
 
-  if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+  if (username === process.env.ADMIN_USERNAME && password === process.env.ADMIN_PASSWORD) {
     const token = jwt.sign({ username }, JWT_SECRET, { expiresIn: '2h' });
     return res.json({
       success: true,
@@ -223,11 +220,7 @@ app.listen(PORT, () => {
   console.log(`🚀 Godrej Stock Server running on port ${PORT}`);
 });
 
-// Self-ping to prevent Render server from sleeping
+// cron job
 setInterval(async () => {
-  try {
-    await fetch(`https://godrej-stock-calc-server.onrender.com/api/health`, { method: "GET" });
-  } catch (e) {
-    console.log("Keep-alive ping failed target instance.");
-  }
+  await fetch(`https://godrej-stock-calc-server.onrender.com/api/health`, { method: "GET" });
 }, 14 * 60 * 1000);
