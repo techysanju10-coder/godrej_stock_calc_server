@@ -12,10 +12,11 @@ const FALLBACK_FILE_PATH = path.join(__dirname, 'db_fallback.json');
 const StockEntrySchema = new mongoose.Schema({
   date: { type: String, required: true }, // YYYY-MM-DD
   displayDate: { type: String, required: true }, // DD/MM/YYYY
-  locationCode: { type: String, required: true },
   locationName: { type: String, required: true },
+  promoterName: { type: String, default: '' },
   openingStock: { type: Number, required: true },
   stockAddedBySupervisor: { type: Number, default: 0 },
+  stockRemovedBySupervisor: { type: Number, default: 0 },
   finalOpeningStock: { type: Number, required: true },
   closingStock: { type: Number, required: true },
   stocksSaled: { type: Number, required: true },
@@ -85,46 +86,30 @@ export async function saveStockEntry(data) {
   }
 }
 
-export async function getLatestEntryForLocation(locationCode) {
-  if (isFallbackMode) {
-    const db = await readFallbackFile();
-    const matches = db.entries.filter(e => e.locationCode === locationCode);
-    if (matches.length === 0) return null;
-    
-    // Sort by createdAt descending
-    matches.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    return matches[0];
-  } else {
-    return await StockEntry.findOne({ locationCode })
-      .sort({ createdAt: -1 })
-      .exec();
-  }
-}
-
 export async function getStockEntriesForDate(date) {
   if (isFallbackMode) {
     const db = await readFallbackFile();
     return db.entries
       .filter(e => e.date === date)
-      .sort((a, b) => a.locationCode.localeCompare(b.locationCode));
+      .sort((a, b) => a.locationName.localeCompare(b.locationName));
   } else {
     return await StockEntry.find({ date })
-      .sort({ locationCode: 1 })
+      .sort({ locationName: 1 })
       .exec();
   }
 }
 
-// Returns ALL entries sorted by date ASC then locationCode ASC (for extensive report)
+// Returns ALL entries sorted by date ASC then locationName ASC (for extensive report)
 export async function getAllStockEntries() {
   if (isFallbackMode) {
     const db = await readFallbackFile();
     return [...db.entries].sort((a, b) => {
       if (a.date !== b.date) return a.date.localeCompare(b.date);
-      return a.locationCode.localeCompare(b.locationCode);
+      return (a.locationName || '').localeCompare(b.locationName || '');
     });
   } else {
     return await StockEntry.find({})
-      .sort({ date: 1, locationCode: 1 })
+      .sort({ date: 1, locationName: 1 })
       .exec();
   }
 }
